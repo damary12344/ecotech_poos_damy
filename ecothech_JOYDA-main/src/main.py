@@ -1,109 +1,99 @@
 import sys
 import os
 
-# Asegura que el directorio raíz 'src' esté en el path de importaciones
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from persistencia.crear_bd import crear_tablas
-from persistencia.empleados_dao import EmpleadoDAO
+from servicios.permisos import exigir_admin
+from utilidades import limpiar_pantalla, pausar
+from menu_empleados import menu_empleados
+from menu_departamento import menu_departamentos
+from menu_proyecto import menu_proyectos
+from menu_registro_tiempo import menu_registro_tiempo
+from menu_usuario import (solicitar_login, solicitar_registro,mostrar_perfil, consultar_indicador)
+from menu_trabajo import (ver_mis_proyectos, registrar_mis_horas,ver_mis_registros, menu_asignaciones)
 
-def mostrar_menu():
-    print("\n" + "="*45)
-    print(" SISTEMA DE GESTIÓN - ECOTECH SOLUTIONS")
-    print("="*45)
-    print("1. Registrar Empleado")
-    print("2. Listar Empleados")
-    print("3. Buscar Empleado por ID")
-    print("4. Actualizar Empleado")
-    print("5. Eliminar Empleado")
-    print("6. Salir")
-    print("="*45)
+
+def _solo_admin(sesion, funcion):
+    exigir_admin(sesion)
+    funcion()
+
+
+def _ciclo(usuario, titulos, acciones, con_pausa=()):
+    while True:
+        limpiar_pantalla()
+        print("=" * 45)
+        print(" SISTEMA DE GESTIÓN - ECOTECH SOLUTIONS")
+        print(f" Sesión: {usuario['nombre_usuario']} ({usuario['rol']})")
+        print("=" * 45)
+        for titulo in titulos:
+            print(titulo)
+        print("9. Cerrar sesión")
+        print("0. Salir")
+        opcion = input("Seleccione una opción: ").strip()
+        if opcion in ("0", "9"):
+            return opcion
+        accion = acciones.get(opcion)
+        if accion is None:
+            print("Opción no válida.")
+            pausar()
+            continue
+        limpiar_pantalla()
+        try:
+            accion()
+        except PermissionError as error:
+            print(error)
+            pausar()
+            continue
+        if opcion in con_pausa:
+            pausar()
+
+
+def menu_admin(u):
+    titulos = ["1. Gestión de Empleados", "2. Gestión de Departamentos","3. Gestión de Proyectos", "4. Gestión de Registro de Tiempos","5. Registrar cuenta de usuario", "6. Mi perfil", "7. Consultar API (dólar / clima)", "8. Asignaciones (proyectos y gerentes)"]
+    acciones = {
+        "1": lambda: menu_empleados(u),
+        "2": lambda: _solo_admin(u, menu_departamentos),
+        "3": lambda: _solo_admin(u, menu_proyectos),
+        "4": lambda: _solo_admin(u, menu_registro_tiempo),
+        "5": lambda: solicitar_registro(u),
+        "6": lambda: mostrar_perfil(u),
+        "7": lambda: consultar_indicador(u),
+        "8": lambda: menu_asignaciones(u),
+    }
+    return _ciclo(u, titulos, acciones, con_pausa=("5",))
+
+
+def menu_empleado(u):
+    titulos = ["1. Mi perfil", "2. Mis proyectos", "3. Registrar mis horas", "4. Mis registros de tiempo", "5. Consultar API (dólar / clima)"]
+    acciones = {
+        "1": lambda: mostrar_perfil(u),
+        "2": lambda: ver_mis_proyectos(u),
+        "3": lambda: registrar_mis_horas(u),
+        "4": lambda: ver_mis_registros(u),
+        "5": lambda: consultar_indicador(u),
+    }
+    return _ciclo(u, titulos, acciones, con_pausa=("2", "3", "4"))
+
 
 def main():
-    # Inicializa y verifica la estructura de la base de datos al arrancar
-    try:
-        crear_tablas()
-    except Exception as e:
-        print(f"Error al inicializar la base de datos: {e}")
-
     while True:
-        mostrar_menu()
-        opcion = input("Seleccione una opción (1-6): ").strip()
-
-        if opcion == "1":
-            print("\n--- Registrar Nuevo Empleado ---")
-            nombre = input("Nombre completo: ").strip()
-            if not nombre:
-                print(" El nombre no puede estar vacío.")
-                continue
-
-            direccion = input("Dirección: ").strip()
-            telefono = input("Teléfono: ").strip()
-            correo = input("Correo electrónico: ").strip()
-            if "@" not in correo:
-                print(" Ingrese un correo electrónico válido.")
-                continue
-
-            fecha_inicio = input("Fecha de inicio (YYYY-MM-DD): ").strip()
-            
-            # Control de Excepciones para Entrada Numérica (Criterio 2.1.4)
-            try:
-                salario = float(input("Salario: "))
-                if salario <= 0:
-                    print(" El salario debe ser un número positivo mayor a 0.")
-                    continue
-            except ValueError:
-                print(" Error de Entrada: El salario debe ser un valor numérico.")
-                continue
-
-            # Inserción mediante DAO
-            EmpleadoDAO.insertar_empleado(nombre, direccion, telefono, correo, fecha_inicio, salario)
-
-        elif opcion == "2":
-            print("\n--- Listado de Empleados ---")
-            empleados = EmpleadoDAO.listar_empleados()
-            if empleados:
-                for emp in empleados:
-                    print(f"ID: {emp[0]} | Nombre: {emp[1]} | Correo: {emp[2]} | Teléfono: {emp[3]} | Salario: ${emp[4]:.2f}")
-            else:
-                print("No hay empleados registrados en la base de datos.")
-
-        elif opcion == "3":
-            print("\n--- Buscar Empleado ---")
-            try:
-                id_emp = int(input("Ingrese el ID del empleado: "))
-                emp = EmpleadoDAO.buscar_por_id(id_emp)
-                if emp:
-                    print(f"\nID: {emp[0]}\nNombre: {emp[1]}\nDirección: {emp[2]}\nTeléfono: {emp[3]}\nCorreo: {emp[4]}\nFecha Inicio: {emp[5]}\nSalario: ${emp[6]:.2f}")
-                else:
-                    print(f"No se encontró un empleado con ID {id_emp}.")
-            except ValueError:
-                print(" Error: Debe ingresar un ID numérico válido.")
-
-        elif opcion == "4":
-            print("\n--- Actualizar Datos de Empleado ---")
-            try:
-                id_emp = int(input("Ingrese ID del empleado a actualizar: "))
-                nueva_direccion = input("Nueva Dirección: ").strip()
-                nuevo_telefono = input("Nuevo Teléfono: ").strip()
-                nuevo_salario = float(input("Nuevo Salario: "))
-                EmpleadoDAO.actualizar_empleado(id_emp, nueva_direccion, nuevo_telefono, nuevo_salario)
-            except ValueError:
-                print(" Error: Ingrese valores válidos para el ID y Salario.")
-
-        elif opcion == "5":
-            print("\n--- Eliminar Empleado ---")
-            try:
-                id_emp = int(input("Ingrese el ID del empleado a eliminar: "))
-                EmpleadoDAO.eliminar_empleado(id_emp)
-            except ValueError:
-                print(" Error: El ID debe ser un número entero.")
-
-        elif opcion == "6":
-            print("\nSaliendo del sistema EcoTech Solutions...")
-            break
+        limpiar_pantalla()
+        usuario_actual = solicitar_login()
+        if usuario_actual is None:
+            if input("Enter para reintentar o 0 para salir: ").strip() == "0":
+                return
+            continue
+        if usuario_actual["rol"] == "admin":
+            opcion = menu_admin(usuario_actual)
         else:
-            print(" Opción no válida. Por favor, seleccione un número del 1 al 6.")
+            opcion = menu_empleado(usuario_actual)
+        usuario_actual = None
+        if opcion == "0":
+            print("\nSaliendo del sistema EcoTech Solutions...")
+            return
+        print("Sesión cerrada. Ingrese nuevamente.")
+        pausar()
+
 
 if __name__ == "__main__":
     main()

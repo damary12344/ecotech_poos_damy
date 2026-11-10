@@ -1,110 +1,62 @@
-import mysql.connector
-from .conexion import abrir_conexion
+from .consultas import consultar, ejecutar
+
 
 class EmpleadoDAO:
     @staticmethod
     def insertar_empleado(nombre, direccion, telefono, correo, fecha_inicio, salario):
-        sql = """
-            INSERT INTO empleado (nombre, direccion, telefono, correo, fecha_inicio, salario)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        conexion = abrir_conexion()
-        if not conexion:
-            return False
-        try:
-            cursor = conexion.cursor()
-            cursor.execute(sql, (nombre, direccion, telefono, correo, fecha_inicio, salario))
-            conexion.commit()
-            print(f"\n¡Empleado '{nombre}' registrado exitosamente en Wampserver!")
-            return True
-        except mysql.connector.Error as e:
-            print(f"\nError en MySQL/MariaDB al registrar empleado: {e}")
-            return False
-        finally:
-            if conexion and conexion.is_connected():
-                cursor.close()
-                conexion.close()
+        ok = ejecutar(
+            "INSERT INTO empleado (nombre, direccion, telefono, correo, "
+            "fecha_inicio, salario) VALUES (%s, %s, %s, %s, %s, %s)",
+            (nombre, direccion, telefono, correo, fecha_inicio, salario))
+        if ok:
+            print(f"\n¡Empleado '{nombre}' registrado exitosamente!")
+        return ok
 
     @staticmethod
     def listar_empleados():
-        sql = "SELECT id_empleado, nombre, correo, telefono, salario FROM empleado"
-        conexion = abrir_conexion()
-        if not conexion:
-            return []
-        try:
-            cursor = conexion.cursor()
-            cursor.execute(sql)
-            return cursor.fetchall()
-        except mysql.connector.Error as e:
-            print(f"\nError al listar empleados: {e}")
-            return []
-        finally:
-            if conexion and conexion.is_connected():
-                cursor.close()
-                conexion.close()
+        return consultar(
+            "SELECT id_empleado, nombre, correo, telefono, salario "
+            "FROM empleado ORDER BY id_empleado")
 
     @staticmethod
     def buscar_por_id(id_empleado):
-        sql = "SELECT id_empleado, nombre, direccion, telefono, correo, fecha_inicio, salario FROM empleado WHERE id_empleado = %s"
-        conexion = abrir_conexion()
-        if not conexion:
-            return None
-        try:
-            cursor = conexion.cursor()
-            cursor.execute(sql, (id_empleado,))
-            return cursor.fetchone()
-        except mysql.connector.Error as e:
-            print(f"\nError al buscar empleado: {e}")
-            return None
-        finally:
-            if conexion and conexion.is_connected():
-                cursor.close()
-                conexion.close()
+        filas = consultar(
+            "SELECT id_empleado, nombre, direccion, telefono, correo, "
+            "fecha_inicio, salario FROM empleado WHERE id_empleado = %s",
+            (id_empleado,))
+        return filas[0] if filas else None
 
     @staticmethod
     def actualizar_empleado(id_empleado, direccion, telefono, salario):
-        sql = "UPDATE empleado SET direccion = %s, telefono = %s, salario = %s WHERE id_empleado = %s"
-        conexion = abrir_conexion()
-        if not conexion:
+        if EmpleadoDAO.buscar_por_id(id_empleado) is None:
+            print(f"\nNo se encontró el empleado con ID {id_empleado}.")
             return False
-        try:
-            cursor = conexion.cursor()
-            cursor.execute(sql, (direccion, telefono, salario, id_empleado))
-            conexion.commit()
-            if cursor.rowcount > 0:
-                print(f"\nEmpleado ID {id_empleado} actualizado con éxito.")
-                return True
-            else:
-                print(f"\nNo se encontró el empleado con ID {id_empleado}.")
-                return False
-        except mysql.connector.Error as e:
-            print(f"\nError al actualizar empleado: {e}")
-            return False
-        finally:
-            if conexion and conexion.is_connected():
-                cursor.close()
-                conexion.close()
+        ok = ejecutar(
+            "UPDATE empleado SET direccion = %s, telefono = %s, salario = %s "
+            "WHERE id_empleado = %s",
+            (direccion, telefono, salario, id_empleado))
+        if ok:
+            print(f"\nEmpleado ID {id_empleado} actualizado con éxito.")
+        return ok
+
+    @staticmethod
+    def actualizar_perfil(id_empleado, nombre, correo):
+        return ejecutar(
+            "UPDATE empleado SET nombre = %s, correo = %s "
+            "WHERE id_empleado = %s", (nombre, correo, id_empleado))
 
     @staticmethod
     def eliminar_empleado(id_empleado):
-        sql = "DELETE FROM empleado WHERE id_empleado = %s"
-        conexion = abrir_conexion()
-        if not conexion:
+        if EmpleadoDAO.buscar_por_id(id_empleado) is None:
+            print(f"\nNo existe un empleado con ID {id_empleado}.")
             return False
-        try:
-            cursor = conexion.cursor()
-            cursor.execute(sql, (id_empleado,))
-            conexion.commit()
-            if cursor.rowcount > 0:
-                print(f"\nEmpleado ID {id_empleado} eliminado con éxito.")
-                return True
-            else:
-                print(f"\nNo existe un empleado con ID {id_empleado}.")
-                return False
-        except mysql.connector.Error as e:
-            print(f"\nError al eliminar empleado: {e}")
+        if (consultar("SELECT 1 FROM usuarios WHERE empleado_id = %s", (id_empleado,))
+                or consultar("SELECT 1 FROM registro_tiempo " "WHERE id_empleado = %s", (id_empleado,))):
+            print("\nNo se puede eliminar: tiene una cuenta o registros " "de tiempo asociados.")
             return False
-        finally:
-            if conexion and conexion.is_connected():
-                cursor.close()
-                conexion.close()
+        ejecutar("DELETE FROM asignacion_proyecto WHERE id_empleado = %s",(id_empleado,))
+        ejecutar("UPDATE departamento SET gerente_id = NULL " "WHERE gerente_id = %s", (id_empleado,))
+        ok = ejecutar("DELETE FROM empleado WHERE id_empleado = %s", (id_empleado,))
+        if ok:
+            print(f"\nEmpleado ID {id_empleado} eliminado con éxito.")
+        return ok
